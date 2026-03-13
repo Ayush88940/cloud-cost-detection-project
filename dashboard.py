@@ -1,263 +1,314 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import os
-
-from optimizer import analyze_resources
-
-st.set_page_config(layout="wide")
-
-st.title("Cloud Cost Control Platform")
-st.caption("Business-oriented cloud infrastructure optimization")
+import math
+from optimizer import analyze_resources, INSTANCE_COST
 
 # ------------------------------------------------
-# Ensure dataset exists
+# PAGE CONFIG & STYLING
 # ------------------------------------------------
+st.set_page_config(
+    page_title="Cloud Cost Control Platform",
+    page_icon="☁️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# Premium CSS Injection
+st.markdown("""
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .main {
+        background-color: #0e1117;
+    }
+    
+    .stMetric {
+        background-color: rgba(255, 255, 255, 0.05);
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+    }
+    
+    .stMetric:hover {
+        border-color: #4CAF50;
+        transform: translateY(-2px);
+    }
+    
+    .stButton>button {
+        width: 100%;
+        border-radius: 8px;
+        background-color: #4CAF50;
+        color: white;
+        font-weight: 600;
+        border: none;
+        padding: 10px;
+        transition: all 0.3s ease;
+    }
+    
+    .stButton>button:hover {
+        background-color: #45a049;
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+    
+    .header-panel {
+        background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
+        padding: 40px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+        color: white;
+    }
+    
+    .section-container {
+        background-color: #161b22;
+        padding: 25px;
+        border-radius: 12px;
+        border: 1px solid #30363d;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------------------------------------
+# DATA INITIALIZATION
+# ------------------------------------------------
 if not os.path.exists("company_usage.csv"):
-    import data_generator
     os.system("python data_generator.py")
 
-df = pd.read_csv("company_usage.csv")
+@st.cache_data(ttl=60)
+def load_data():
+    return pd.read_csv("company_usage.csv")
 
-# ------------------------------------------------
-# SESSION STATE
-# ------------------------------------------------
+df_raw = load_data()
 
+# Session State Initialization
 if "instances" not in st.session_state:
-    st.session_state.instances = 10
+    st.session_state.instances = 12
 
-if "disabled_employees" not in st.session_state:
-    st.session_state.disabled_employees = []
-
-if "disabled_teams" not in st.session_state:
-    st.session_state.disabled_teams = []
+if "disabled_actors" not in st.session_state:
+    st.session_state.disabled_actors = {"employees": [], "teams": []}
 
 # ------------------------------------------------
-# FILTER ACTIVE DATA
+# SIDEBAR - CONTROLS
 # ------------------------------------------------
+with st.sidebar:
+    st.image("https://img.icons8.com/isometric-folders/100/cloud.png", width=80)
+    st.title("Admin Console")
+    st.subheader("Infrastructure Simulation")
+    
+    st.slider(
+        "Simulation: Running Instances",
+        min_value=1,
+        max_value=25,
+        key="instances",
+        help="Simulate the current number of active server instances."
+    )
+    
+    st.divider()
+    
+    if st.button("🔄 Reset Environment"):
+        st.session_state.disabled_actors = {"employees": [], "teams": []}
+        st.session_state.instances = 12
+        st.rerun()
 
-filtered_df = df[
-    (~df["employee"].isin(st.session_state.disabled_employees)) &
-    (~df["team"].isin(st.session_state.disabled_teams))
-]
-
 # ------------------------------------------------
-# OPTIMIZER
+# DATA FILTERING
 # ------------------------------------------------
+filtered_df = df_raw.copy()
+filtered_df = filtered_df[~filtered_df["team"].isin(st.session_state.disabled_actors["teams"])]
+filtered_df = filtered_df[~filtered_df["employee"].isin(st.session_state.disabled_actors["employees"])]
 
 results = analyze_resources(filtered_df)
-
-INSTANCE_COST = 5000
 current_cost = st.session_state.instances * INSTANCE_COST
+savings = current_cost - results["optimized_cost"]
+efficiency_score = (results["required_instances"] / st.session_state.instances) * 100 if st.session_state.instances > 0 else 0
 
 # ------------------------------------------------
-# EXECUTIVE SUMMARY
+# MAIN DASHBOARD UI
 # ------------------------------------------------
 
-st.header("Executive Summary")
+# Header Section
+st.markdown("""
+<div class="header-panel">
+    <h1 style='margin:0;'>Cloud Cost Control Platform</h1>
+    <p style='margin:0; opacity: 0.8;'>Intelligent Infrastructure Monitoring & Optimization Dashboard</p>
+</div>
+""", unsafe_allow_html=True)
 
-col1,col2,col3,col4,col5 = st.columns(5)
+# Executive Summary Metrics
+col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Current Instances", st.session_state.instances)
-col2.metric("Required Instances", results["required_instances"])
-col3.metric("Current Cost", f"${current_cost}")
-col4.metric("Optimized Cost", f"${results['optimized_cost']}")
-col5.metric("Monthly Savings", f"${current_cost-results['optimized_cost']}")
+with col1:
+    st.metric("Running Instances", st.session_state.instances)
+with col2:
+    st.metric("Required Instances", results["required_instances"], delta=int(results["required_instances"] - st.session_state.instances), delta_color="inverse")
+with col3:
+    st.metric("Current Monthly Cost", f"${current_cost:,}")
+with col4:
+    st.metric("Potential Savings", f"${savings:,}", delta=f"{efficiency_score:.1f}% Efficiency", delta_color="normal" if efficiency_score > 80 else "inverse")
 
-st.divider()
+st.markdown("<br>", unsafe_allow_html=True)
 
-# ------------------------------------------------
-# INFRASTRUCTURE CONTROL
-# ------------------------------------------------
+# Charts Section
+col_left, col_right = st.columns([1.5, 1])
 
-st.subheader("Infrastructure Control")
-
-st.slider(
-    "Adjust Running Instances",
-    1,
-    20,
-    key="instances"
-)
-
-st.write("Active Instances:", st.session_state.instances)
-
-# ------------------------------------------------
-# TEAM RESOURCE USAGE
-# ------------------------------------------------
-
-st.subheader("Team Resource Usage")
-
-if not filtered_df.empty:
-
-    team_usage = filtered_df.groupby("team")["cpu_usage"].mean().reset_index()
-
-    fig = px.bar(
-        team_usage,
+with col_left:
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
+    st.subheader("📊 Team Resource Usage vs Allocation")
+    
+    # Prepare data for team usage
+    team_metrics = filtered_df.groupby("team").agg({
+        "cpu_usage": "mean",
+        "ram_usage": "mean"
+    }).reset_index()
+    
+    fig_team = px.bar(
+        team_metrics,
         x="team",
         y="cpu_usage",
-        title="Average CPU Usage by Team"
+        color="cpu_usage",
+        color_continuous_scale="Blues",
+        text_auto=".1f",
+        labels={"cpu_usage": "Avg CPU %", "team": "Business Unit"}
     )
-
-    st.plotly_chart(fig, use_container_width=True)
-
-# ------------------------------------------------
-# RESOURCE HEATMAP
-# ------------------------------------------------
-
-st.subheader("Resource Heatmap")
-
-if not filtered_df.empty:
-
-    heatmap_df = filtered_df.pivot_table(
-        index="employee",
-        columns="team",
-        values="cpu_usage"
+    fig_team.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        margin=dict(t=30, b=0, l=0, r=0)
     )
+    st.plotly_chart(fig_team, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    fig = px.imshow(
-        heatmap_df,
-        text_auto=True,
-        aspect="auto",
-        color_continuous_scale="Blues"
+with col_right:
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
+    st.subheader("💡 Optimization Impact")
+    
+    # Gauge for Efficiency
+    fig_gauge = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = efficiency_score,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Efficiency Score"},
+        gauge = {
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "#4CAF50"},
+            'steps': [
+                {'range': [0, 50], 'color': "#ff4b4b"},
+                {'range': [50, 80], 'color': "#ffa500"},
+                {'range': [80, 100], 'color': "#4CAF50"}
+            ],
+        }
+    ))
+    fig_gauge.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        margin=dict(t=50, b=0, l=20, r=20),
+        height=250
     )
+    st.plotly_chart(fig_gauge, use_container_width=True)
+    
+    if st.button("✨ Auto-Optimize Infrastructure"):
+        st.session_state.instances = results["required_instances"]
+        st.toast(f"Successfully optimized to {results['required_instances']} instances!")
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    st.plotly_chart(fig, use_container_width=True)
+# Resource Heatmap & Forecasting
+col_a, col_b = st.columns(2)
 
-# ------------------------------------------------
-# CPU DISTRIBUTION
-# ------------------------------------------------
-
-st.subheader("CPU Usage Distribution")
-
-if not filtered_df.empty:
-
-    fig = px.pie(
-        team_usage,
-        names="team",
-        values="cpu_usage"
-    )
-
-    st.plotly_chart(fig)
-
-# ------------------------------------------------
-# COST FORECAST
-# ------------------------------------------------
-
-st.subheader("Cost Forecast")
-
-months = ["Jan","Feb","Mar","Apr","May","Jun"]
-
-base_cost = st.session_state.instances * INSTANCE_COST
-
-costs = [
-    base_cost,
-    base_cost * 0.95,
-    base_cost * 0.98,
-    base_cost * 1.02,
-    base_cost * 0.97,
-    results["optimized_cost"]
-]
-
-forecast_df = pd.DataFrame({
-    "Month": months,
-    "Cost": costs
-})
-
-fig = px.line(
-    forecast_df,
-    x="Month",
-    y="Cost",
-    markers=True,
-    title="Infrastructure Cost Forecast"
-)
-
-st.plotly_chart(fig, use_container_width=True)
-
-st.divider()
-
-# ------------------------------------------------
-# AUTOMATIC LEAK RESOLUTION
-# ------------------------------------------------
-
-st.subheader("Automatic Leak Resolution")
-
-if st.button("Resolve Infrastructure Leak"):
-
-    st.session_state.instances = results["required_instances"]
-
-    st.success(
-        f"Infrastructure optimized to {results['required_instances']} instances"
-    )
-
-    st.rerun()
-
-# ------------------------------------------------
-# EMPLOYEE CONTROL
-# ------------------------------------------------
-
-st.subheader("Employee Service Control")
-
-for _,row in df.iterrows():
-
-    employee = row["employee"]
-
-    status = "ON"
-
-    if employee in st.session_state.disabled_employees:
-        status = "OFF"
-
-    col1,col2,col3,col4,col5 = st.columns([2,2,1,1,1])
-
-    col1.write(employee)
-    col2.write(row["team"])
-    col3.write(row["cpu_usage"])
-    col4.write(status)
-
-    if status == "ON":
-
-        if col5.button("Turn Off",key=f"off_{employee}"):
-
-            st.session_state.disabled_employees.append(employee)
-            st.rerun()
-
+with col_a:
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
+    st.subheader("🔥 Employee Workload Heatmap")
+    if not filtered_df.empty:
+        heatmap_data = filtered_df.pivot_table(index="employee", columns="team", values="cpu_usage")
+        fig_heat = px.imshow(
+            heatmap_data,
+            color_continuous_scale="Viridis",
+            labels=dict(x="Team", y="Employee", color="CPU %")
+        )
+        fig_heat.update_layout(margin=dict(t=0, b=0, l=0, r=0), paper_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_heat, use_container_width=True)
     else:
+        st.info("No active resources to display.")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-        if col5.button("Turn On",key=f"on_{employee}"):
+with col_b:
+    st.markdown('<div class="section-container">', unsafe_allow_html=True)
+    st.subheader("📈 Cost Savings Forecast")
+    
+    months = ["Jan", "Feb", "Mar", "Apr", "May", "Projection"]
+    current_trend = [current_cost * (1 + (i*0.02)) for i in range(5)] + [current_cost * 1.05]
+    optimized_trend = [current_cost * (1 + (i*0.02)) for i in range(5)] + [results["optimized_cost"]]
+    
+    fig_trend = go.Figure()
+    fig_trend.add_trace(go.Scatter(x=months, y=current_trend, name="Current Path", line=dict(color='#ff4b4b', dash='dash')))
+    fig_trend.add_trace(go.Scatter(x=months, y=optimized_trend, name="Optimized Path", fill='tonexty', line=dict(color='#4CAF50', width=4)))
+    
+    fig_trend.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font_color='white',
+        margin=dict(t=30, b=0, l=0, r=0),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_trend, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-            st.session_state.disabled_employees.remove(employee)
-            st.rerun()
+# Management Panel
+st.markdown('<div class="section-container">', unsafe_allow_html=True)
+st.subheader("🛡️ Business Continuity & Resource Control")
 
-# ------------------------------------------------
-# TEAM CONTROL
-# ------------------------------------------------
+tab_team, tab_emp = st.tabs(["Team Controls", "Employee Controls"])
 
-st.subheader("Team Control Panel")
+with tab_team:
+    unique_teams = df_raw["team"].unique()
+    cols = st.columns(min(len(unique_teams), 4))
+    for i, team in enumerate(unique_teams):
+        with cols[i % 4]:
+            is_active = team not in st.session_state.disabled_actors["teams"]
+            status_color = "🟢 Active" if is_active else "🔴 Stopped"
+            st.markdown(f"**{team}**")
+            st.caption(status_color)
+            if is_active:
+                if st.button("Stop Units", key=f"stop_t_{team}"):
+                    st.session_state.disabled_actors["teams"].append(team)
+                    st.rerun()
+            else:
+                if st.button("Start Units", key=f"start_t_{team}"):
+                    st.session_state.disabled_actors["teams"].remove(team)
+                    st.rerun()
 
-teams = df["team"].unique()
+with tab_emp:
+    for team in unique_teams:
+        if team in st.session_state.disabled_actors["teams"]:
+            continue
+            
+        with st.expander(f"📋 {team} Staffing"):
+            team_df = df_raw[df_raw["team"] == team]
+            for _, row in team_df.iterrows():
+                emp = row["employee"]
+                is_active = emp not in st.session_state.disabled_actors["employees"]
+                c1, c2, c3 = st.columns([3, 1, 1])
+                c1.write(f"👤 {emp}")
+                c2.write("✅ Active" if is_active else "❌ Idle")
+                if is_active:
+                    if c3.button("Suspend", key=f"susp_{emp}"):
+                        st.session_state.disabled_actors["employees"].append(emp)
+                        st.rerun()
+                else:
+                    if c3.button("Resume", key=f"res_{emp}"):
+                        st.session_state.disabled_actors["employees"].remove(emp)
+                        st.rerun()
 
-for team in teams:
+st.markdown('</div>', unsafe_allow_html=True)
 
-    status = "ON"
-
-    if team in st.session_state.disabled_teams:
-        status = "OFF"
-
-    col1,col2,col3 = st.columns([3,1,1])
-
-    col1.write(team)
-    col2.write(status)
-
-    if status == "ON":
-
-        if col3.button("Stop Team",key=f"stop_{team}"):
-
-            st.session_state.disabled_teams.append(team)
-            st.rerun()
-
-    else:
-
-        if col3.button("Start Team",key=f"start_{team}"):
-
-            st.session_state.disabled_teams.remove(team)
-            st.rerun()
+# Footer
+st.caption("© 2026 Cloud-Cost-Detection Project • Powered by Antigravity Intelligence")
