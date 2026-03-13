@@ -1,0 +1,17 @@
+team,employee,cpu_usage,ram_usage
+Development,Development_Emp1,11,16
+Development,Development_Emp2,41,14
+Development,Development_Emp3,41,13
+Development,Development_Emp4,13,16
+Operations,Operations_Emp1,33,10
+Operations,Operations_Emp2,37,5
+Operations,Operations_Emp3,77,8
+Operations,Operations_Emp4,78,12
+Data,Data_Emp1,67,15
+Data,Data_Emp2,77,9
+Data,Data_Emp3,61,15
+Data,Data_Emp4,22,9
+R&D,R&D_Emp1,16,13
+R&D,R&D_Emp2,26,16
+R&D,R&D_Emp3,51,3
+R&D,R&D_Emp4,71,4
